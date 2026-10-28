@@ -3,316 +3,312 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.tree import DecisionTreeRegressor
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score
+)
+from sklearn.inspection import permutation_importance
 
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
-
-# ==========================================
+# ============================================
 # 1. LOAD DATASET
-# ==========================================
+# ============================================
 
-df = pd.read_csv("student_performance.csv")
+data = pd.read_csv("student_performance.csv")
 
-print("\nFirst 5 rows of the dataset:")
-print(df.head())
+print("\n" + "=" * 50)
+print("STUDENT PERFORMANCE DATASET")
+print("=" * 50)
 
-print("\nDataset shape:")
-print(df.shape)
+print("\nFirst 5 rows:")
+print(data.head())
 
-print("\nMissing values:")
-print(df.isnull().sum())
+print("\nDataset Shape:")
+print(data.shape)
 
+print("\nColumn Names:")
+print(data.columns.tolist())
 
-# ==========================================
-# 2. SELECT FEATURES AND TARGET
-# ==========================================
-
-X = df[
-    [
-        "study_hours",
-        "attendance",
-        "previous_score",
-        "assignments_completed",
-        "sleep_hours"
-    ]
-]
-
-y = df["final_score"]
+print("\nMissing Values:")
+print(data.isnull().sum())
 
 
-# ==========================================
-# 3. SPLIT DATA INTO TRAINING AND TESTING
-# ==========================================
+# ============================================
+# 2. PREPARE DATA
+# ============================================
+
+# Remove rows containing missing values
+data = data.dropna()
+
+# Display information about the dataset
+print("\nDataset after removing missing values:")
+print(data.shape)
+
+
+# ============================================
+# 3. SELECT FEATURES AND TARGET
+# ============================================
+
+# Target column
+target_column = "final_score"
+
+# Features
+X = data.drop(columns=[target_column])
+
+# Target
+y = data[target_column]
+
+# Convert categorical columns into numerical values
+X = pd.get_dummies(X, drop_first=True)
+
+print("\nFeatures used for prediction:")
+print(X.columns.tolist())
+
+print("\nTarget:")
+print(target_column)
+
+
+# ============================================
+# 4. TRAIN-TEST SPLIT
+# ============================================
 
 X_train, X_test, y_train, y_test = train_test_split(
     X,
     y,
-    test_size=0.2,
+    test_size=0.20,
     random_state=42
 )
 
-print("\nTraining data size:", X_train.shape)
-print("Testing data size:", X_test.shape)
+print("\nTraining samples:", len(X_train))
+print("Testing samples:", len(X_test))
 
 
-# ==========================================
-# 4. CREATE MACHINE LEARNING MODELS
-# ==========================================
-
-linear_model = LinearRegression()
-
-decision_tree = DecisionTreeRegressor(
-    random_state=42
-)
+# ============================================
+# 5. RANDOM FOREST MODEL
+# ============================================
 
 random_forest = RandomForestRegressor(
     n_estimators=100,
     random_state=42
 )
 
-
-# ==========================================
-# 5. TRAIN THE MODELS
-# ==========================================
-
-linear_model.fit(X_train, y_train)
-
-decision_tree.fit(X_train, y_train)
-
 random_forest.fit(X_train, y_train)
 
-
-# ==========================================
-# 6. MAKE PREDICTIONS
-# ==========================================
-
-linear_prediction = linear_model.predict(X_test)
-
-tree_prediction = decision_tree.predict(X_test)
-
-forest_prediction = random_forest.predict(X_test)
+# Predictions
+y_pred = random_forest.predict(X_test)
 
 
-# ==========================================
-# 7. CALCULATE PERFORMANCE METRICS
-# ==========================================
+# ============================================
+# 6. MODEL EVALUATION
+# ============================================
 
-def calculate_metrics(actual, predicted):
+mae = mean_absolute_error(y_test, y_pred)
+mse = mean_squared_error(y_test, y_pred)
+rmse = np.sqrt(mse)
+r2 = r2_score(y_test, y_pred)
 
-    mae = mean_absolute_error(actual, predicted)
+print("\n" + "=" * 50)
+print("MODEL EVALUATION")
+print("=" * 50)
 
-    mse = mean_squared_error(actual, predicted)
-
-    rmse = np.sqrt(mse)
-
-    r2 = r2_score(actual, predicted)
-
-    return mae, mse, rmse, r2
+print(f"\nMean Absolute Error (MAE): {mae:.2f}")
+print(f"Mean Squared Error (MSE): {mse:.2f}")
+print(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
+print(f"R² Score: {r2:.2f}")
 
 
-# Linear Regression metrics
-linear_mae, linear_mse, linear_rmse, linear_r2 = calculate_metrics(
-    y_test,
-    linear_prediction
+# ============================================
+# 7. CROSS-VALIDATION
+# ============================================
+
+cv_scores = cross_val_score(
+    random_forest,
+    X,
+    y,
+    cv=5,
+    scoring="r2"
 )
 
+print("\n" + "=" * 50)
+print("5-FOLD CROSS-VALIDATION")
+print("=" * 50)
 
-# Decision Tree metrics
-tree_mae, tree_mse, tree_rmse, tree_r2 = calculate_metrics(
-    y_test,
-    tree_prediction
+print("\nCross-validation scores:")
+print(cv_scores)
+
+print(f"\nAverage CV R² Score: {cv_scores.mean():.2f}")
+print(f"Standard Deviation: {cv_scores.std():.2f}")
+
+
+# ============================================
+# 8. HYPERPARAMETER TUNING
+# ============================================
+
+print("\n" + "=" * 50)
+print("HYPERPARAMETER TUNING")
+print("=" * 50)
+
+param_grid = {
+    "n_estimators": [50, 100, 150],
+    "max_depth": [None, 10, 20],
+    "min_samples_split": [2, 5]
+}
+
+grid_search = GridSearchCV(
+    estimator=RandomForestRegressor(random_state=42),
+    param_grid=param_grid,
+    cv=5,
+    scoring="r2",
+    n_jobs=-1
 )
 
+grid_search.fit(X_train, y_train)
 
-# Random Forest metrics
-forest_mae, forest_mse, forest_rmse, forest_r2 = calculate_metrics(
-    y_test,
-    forest_prediction
-)
+print("\nBest Parameters:")
+print(grid_search.best_params_)
 
-
-# ==========================================
-# 8. CREATE FINAL RESULTS TABLE
-# ==========================================
-
-results = pd.DataFrame({
-
-    "Model": [
-        "Linear Regression",
-        "Decision Tree",
-        "Random Forest"
-    ],
-
-    "MAE": [
-        linear_mae,
-        tree_mae,
-        forest_mae
-    ],
-
-    "MSE": [
-        linear_mse,
-        tree_mse,
-        forest_mse
-    ],
-
-    "RMSE": [
-        linear_rmse,
-        tree_rmse,
-        forest_rmse
-    ],
-
-    "R2 Score": [
-        linear_r2,
-        tree_r2,
-        forest_r2
-    ]
-})
+print(f"\nBest Cross-Validation R² Score: {grid_search.best_score_:.2f}")
 
 
-# ==========================================
-# 9. DISPLAY FINAL RESULTS
-# ==========================================
+# ============================================
+# 9. EVALUATE TUNED MODEL
+# ============================================
 
-print("\n")
-print("=" * 80)
-print("FINAL MODEL PERFORMANCE COMPARISON")
-print("=" * 80)
+best_model = grid_search.best_estimator_
 
-print(
-    results.round(4).to_string(index=False)
-)
+tuned_predictions = best_model.predict(X_test)
 
-print("=" * 80)
+tuned_mae = mean_absolute_error(y_test, tuned_predictions)
+tuned_mse = mean_squared_error(y_test, tuned_predictions)
+tuned_rmse = np.sqrt(tuned_mse)
+tuned_r2 = r2_score(y_test, tuned_predictions)
 
+print("\n" + "=" * 50)
+print("TUNED MODEL EVALUATION")
+print("=" * 50)
 
-# ==========================================
-# 10. FIND BEST MODEL
-# ==========================================
-
-best_model = results.loc[
-    results["R2 Score"].idxmax(),
-    "Model"
-]
-
-best_r2 = results["R2 Score"].max()
-
-print("\nBest Model:", best_model)
-
-print("Best R2 Score:", round(best_r2, 4))
+print(f"\nTuned MAE: {tuned_mae:.2f}")
+print(f"Tuned MSE: {tuned_mse:.2f}")
+print(f"Tuned RMSE: {tuned_rmse:.2f}")
+print(f"Tuned R² Score: {tuned_r2:.2f}")
 
 
-# ==========================================
-# 11. MODEL COMPARISON GRAPH
-# ==========================================
+# ============================================
+# 10. FEATURE IMPORTANCE
+# ============================================
 
-plt.figure(figsize=(8, 5))
+feature_importance = pd.Series(
+    best_model.feature_importances_,
+    index=X.columns
+).sort_values(ascending=False)
 
-sns.barplot(
-    x="Model",
-    y="R2 Score",
-    data=results
-)
+print("\n" + "=" * 50)
+print("FEATURE IMPORTANCE")
+print("=" * 50)
 
-plt.title("Model Performance Comparison")
+print(feature_importance)
 
-plt.xlabel("Machine Learning Model")
 
-plt.ylabel("R2 Score")
+# ============================================
+# 11. FEATURE IMPORTANCE GRAPH
+# ============================================
 
-plt.xticks(rotation=15)
+plt.figure(figsize=(10, 6))
 
+feature_importance.head(10).plot(kind="bar")
+
+plt.title("Top 10 Important Features")
+plt.xlabel("Features")
+plt.ylabel("Importance")
+plt.xticks(rotation=45)
 plt.tight_layout()
 
 plt.show()
 
 
-# ==========================================
-# 12. ACTUAL VS PREDICTED GRAPH
-# ==========================================
+# ============================================
+# 12. ACTUAL VS PREDICTED VALUES
+# ============================================
 
-plt.figure(figsize=(7, 5))
+plt.figure(figsize=(8, 6))
 
-plt.scatter(
-    y_test,
-    forest_prediction
-)
+plt.scatter(y_test, tuned_predictions)
 
 plt.xlabel("Actual Final Score")
-
 plt.ylabel("Predicted Final Score")
-
-plt.title("Actual vs Predicted Scores - Random Forest")
+plt.title("Actual vs Predicted Student Performance")
 
 plt.tight_layout()
-
 plt.show()
 
 
-# ==========================================
-# 13. FEATURE IMPORTANCE
-# ==========================================
+# ============================================
+# 13. RESIDUAL ANALYSIS
+# ============================================
 
-importance = pd.Series(
-    random_forest.feature_importances_,
-    index=X.columns
+residuals = y_test - tuned_predictions
+
+plt.figure(figsize=(8, 6))
+
+plt.scatter(tuned_predictions, residuals)
+
+plt.axhline(y=0, linestyle="--")
+
+plt.xlabel("Predicted Final Score")
+plt.ylabel("Residual")
+plt.title("Residual Analysis")
+
+plt.tight_layout()
+plt.show()
+
+
+# ============================================
+# 14. PERMUTATION IMPORTANCE
+# ============================================
+
+permutation = permutation_importance(
+    best_model,
+    X_test,
+    y_test,
+    n_repeats=10,
+    random_state=42,
+    scoring="r2"
 )
 
-importance = importance.sort_values(
+permutation_importance_df = pd.DataFrame({
+    "Feature": X.columns,
+    "Importance": permutation.importances_mean
+}).sort_values(
+    by="Importance",
     ascending=False
 )
 
-plt.figure(figsize=(8, 5))
+print("\n" + "=" * 50)
+print("PERMUTATION FEATURE IMPORTANCE")
+print("=" * 50)
 
-importance.plot(
-    kind="bar"
-)
-
-plt.title("Feature Importance - Random Forest")
-
-plt.xlabel("Features")
-
-plt.ylabel("Importance")
-
-plt.xticks(rotation=30)
-
-plt.tight_layout()
-
-plt.show()
+print(permutation_importance_df)
 
 
-# ==========================================
-# 14. PREDICT SCORE FOR A NEW STUDENT
-# ==========================================
+# ============================================
+# 15. NEW STUDENT PREDICTION
+# ============================================
 
-new_student = pd.DataFrame({
-
-    "study_hours": [6],
-
-    "attendance": [85],
-
-    "previous_score": [75],
-
-    "assignments_completed": [8],
-
-    "sleep_hours": [7]
-})
-
-
-prediction = random_forest.predict(new_student)
-
-
-print("\n")
-print("=" * 40)
+print("\n" + "=" * 50)
 print("NEW STUDENT PREDICTION")
-print("=" * 40)
+print("=" * 50)
 
-print(
-    "Predicted Final Score:",
-    round(prediction[0], 2)
-)
+# Use the average values of the test data
+new_student = X_test.iloc[[0]]
 
-print("=" * 40)
+prediction = best_model.predict(new_student)
+
+print("\nPredicted Final Score:",
+      round(prediction[0], 2))
+
+print("\n" + "=" * 50)
+print("MODEL EVALUATION COMPLETED")
+print("=" * 50)
